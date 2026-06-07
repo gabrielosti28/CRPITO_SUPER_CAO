@@ -1,5 +1,4 @@
-﻿
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,27 +6,38 @@ using System.Text;
 namespace Cripto_GSD
 {
     // ============================================================
-    //  Criptografia Manual 
+    //  Criptografia Manual — TrigShift v3
     //
     //  CAMADAS (em ordem):
     //   [1] Sal aleatório de 4 bytes no início
-    //   [2] Deslocamento COM ENCADEAMENTO (modo CBC manual)   
-    //   [3] Permutação Fisher-Yates dos bytes
-    //   [4] Codificação Hex com alfabeto embaralhado pela chave         
+    //   [2] Deslocamento COM ENCADEAMENTO (Seno + Cosseno + Log)
+    //   [3] Permutação Trigonométrica + Collatz
+    //   [4] Codificação Hex com alfabeto embaralhado pela chave
     //   [5] Codificação I/l (esteganografia visual)
+    //
+    
+    //   - CHAVE_INTERNA: fixa no programa, protege a senhaAleatoria
+    //   - senhaAleatoria: gerada a cada cifração, cifra o texto
+    //   - Estrutura da mensagem: [32 bytes senhaCifrada] + [sal(4) + texto cifrado permutados]
     // ============================================================
 
     internal static class CriptografiaManual
     {
-        // ── Hash da senha → 32 bytes únicos ──────────────────────────────
+        // ── Chave interna do programa
+        private const string CHAVE_INTERNA = "Senh0r+d0s_Aneis_H0bbit_T0lkien_MInecraft";
 
+        // ── Instância estática de Random para evitar seeds iguais por tick ──
+        //  Bug sem vergonha
+        private static readonly Random _rng = new Random();
+
+        // ── Hash da senha → 32 bytes únicos ──────────────────────────────
         private static byte[] GerarHashChave(string senha)
         {
             using (var sha = System.Security.Cryptography.SHA256.Create())
                 return sha.ComputeHash(Encoding.UTF8.GetBytes(senha));
         }
-        // ── Deslocamento por posição usando hash + trig + log ─────────────
 
+        // ── Deslocamento por posição usando hash + trig + log ─────────────
         private static int Deslocamento(int i, byte[] chaveHash, int anterior)
         {
             double sen = Math.Sin(i);
@@ -35,10 +45,25 @@ namespace Cripto_GSD
             double log = Math.Log(i + 2);
             int byteChave = chaveHash[i % chaveHash.Length];
 
-            return byteChave + (int)(sen * 10) + (int)(cos * 10) + (int)(log * 5) + anterior;           // encadeia com o byte anterior
+            return byteChave + (int)(sen * 10) + (int)(cos * 10) + (int)(log * 5) + anterior;
         }
 
-        // ── Permutação Fisher-Yates ───────────────────────
+        // ── Sequência de Collatz — retorna quantos passos até chegar em 1 ─
+        private static int Collatz(int n)
+        {
+            int passos = 0;
+            while (n != 1)
+            {
+                if (n % 2 == 0)
+                    n = n / 2;
+                else
+                    n = n * 3 + 1;
+                passos++;
+            }
+            return passos;
+        }
+
+        // ── Permutação Trigonométrica + Collatz + log ───────────────────────────
         private static byte[] Permutar(byte[] dados, byte[] chaveHash)
         {
             int n = dados.Length;
@@ -46,7 +71,14 @@ namespace Cripto_GSD
 
             for (int i = n - 1; i > 0; i--)
             {
-                int j = (chaveHash[i % chaveHash.Length] + i) % (i + 1);
+                int j = Math.Abs(
+                    (int)(Math.Sin(i) * 10) +
+                    (int)(Math.Cos(i) * 10) +
+                    (int)(Math.Log(i + 2) * 5) +
+                    chaveHash[i % chaveHash.Length] +
+                    Collatz(i + 1 + chaveHash[i % chaveHash.Length])
+                ) % (i + 1);
+
                 int tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
             }
 
@@ -56,6 +88,7 @@ namespace Cripto_GSD
             return resultado;
         }
 
+        // ── Desfaz a Permutação Trigonométrica + Collatz ──────────────────
         private static byte[] DesfazerPermutacao(byte[] dados, byte[] chaveHash)
         {
             int n = dados.Length;
@@ -63,7 +96,14 @@ namespace Cripto_GSD
 
             for (int i = n - 1; i > 0; i--)
             {
-                int j = (chaveHash[i % chaveHash.Length] + i) % (i + 1);
+                int j = Math.Abs(
+                    (int)(Math.Sin(i) * 10) +
+                    (int)(Math.Cos(i) * 10) +
+                    (int)(Math.Log(i + 2) * 5) +
+                    chaveHash[i % chaveHash.Length] +
+                    Collatz(i + 1 + chaveHash[i % chaveHash.Length])
+                ) % (i + 1);
+
                 int tmp = indices[i]; indices[i] = indices[j]; indices[j] = tmp;
             }
 
@@ -73,19 +113,13 @@ namespace Cripto_GSD
             return resultado;
         }
 
-
-      // Alfabeto que utilizo
+        // ── Codificação Hex com alfabeto secreto ──────────────────────────
         private static string CodificarHex(byte[] dados, byte[] chaveHash)
         {
             return AlfabetoSecreto.Codificar(dados, chaveHash);
         }
 
-        private static byte[] DecodificarHex(string texto, byte[] chaveHash)
-        {
-            return AlfabetoSecreto.Decodificar(texto, chaveHash);
-        }
-
-        // ── Codificação I/l  ──────────────────────────────
+        // ── Codificação I/l (esteganografia visual) ───────────────────────
         private static string CodificarIL(string texto)
         {
             var sb = new StringBuilder();
@@ -98,6 +132,7 @@ namespace Cripto_GSD
             return sb.ToString();
         }
 
+        // ── Decodificação I/l ─────────────────────────────────────────────
         private static string DecodificarIL(string ilTexto)
         {
             if (ilTexto.Length % 8 != 0)
@@ -114,62 +149,96 @@ namespace Cripto_GSD
             return new string(chars.ToArray());
         }
 
-        // ── Criptografar ──────────────────────────────────────────────────
-        public static string Criptografar(string texto, string senha)
+        // ── Decodificação Hex com alfabeto secreto ────────────────────────
+        private static byte[] DecodificarHex(string texto, byte[] chaveHash)
         {
-            byte[] chaveHash = GerarHashChave(senha);
+            return AlfabetoSecreto.Decodificar(texto, chaveHash);
+        }
 
-            // Sal aleatório de 4 bytes 
-            byte[] sal = new byte[4];
-            new Random().NextBytes(sal);
+        // ── Criptografar ──────────────────────────────────────────────────
+        public static string Criptografar(string texto)
+        {
+            byte[] chaveInterna = GerarHashChave(CHAVE_INTERNA);
 
-            // Junta sal mais o texto em bytes
-            byte[] bytes = sal.Concat(Encoding.UTF8.GetBytes(texto)).ToArray();
+            //_rng sortea os números
+            byte[] senhaAleatoria = new byte[32];
+            _rng.NextBytes(senhaAleatoria);
 
-            // A cada passo, o anterior recebe o byte que acabou de ser cifrado
-            byte[] cifrado = new byte[bytes.Length];
-            int anterior = chaveHash[0]; // valor inicial: não é zero, é derivado da chave
-
-            for (int i = 0; i < bytes.Length; i++)
+            // Cifra a senha aleatória com a chave interna 
+            byte[] senhaCifrada = new byte[32];
+            int anteriorSenha = chaveInterna[0];
+            for (int i = 0; i < 32; i++)
             {
-                int d = Deslocamento(i, chaveHash, anterior);
-                cifrado[i] = (byte)(((bytes[i] + d) % 256 + 256) % 256);
-                anterior = cifrado[i]; // o byte recém cifrado vira o 'anterior' da próxima rodada
+                int d = Deslocamento(i, chaveInterna, anteriorSenha);
+                senhaCifrada[i] = (byte)(((senhaAleatoria[i] + d) % 256 + 256) % 256);
+                anteriorSenha = senhaCifrada[i];
             }
 
-            byte[] permutado = Permutar(cifrado, chaveHash);
+            // Sal + texto
+           //Bug do Random acabou!
+            byte[] sal = new byte[4];
+            _rng.NextBytes(sal);
+            byte[] bytes = sal.Concat(Encoding.UTF8.GetBytes(texto)).ToArray();
 
-            // ──  Hex embaralhado → I/l ─────────────────
-            // Substituímos Convert.ToBase64String pelo nosso CodificarHex
-            return CodificarIL(CodificarHex(permutado, chaveHash));
+            // Cifra o texto com a senha aleatória 
+            byte[] cifrado = new byte[bytes.Length];
+            int anterior = senhaAleatoria[0];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                int d = Deslocamento(i, senhaAleatoria, anterior);
+                cifrado[i] = (byte)(((bytes[i] + d) % 256 + 256) % 256);
+                anterior = cifrado[i];
+            }
+
+            // Permuta o resultado com a senha aleatória
+            byte[] permutado = Permutar(cifrado, senhaAleatoria);
+
+            // O bloco cifrado já contém o sal interno . não separa o sal aqui
+            byte[] mensagemFinal = senhaCifrada.Concat(permutado).ToArray();
+
+            return CodificarIL(CodificarHex(mensagemFinal, chaveInterna));
         }
 
         // ── Descriptografar ───────────────────────────────────────────────
-        public static string Descriptografar(string ilTexto, string senha)
+        public static string Descriptografar(string ilTexto)
         {
-            byte[] chaveHash = GerarHashChave(senha);
+            byte[] chaveInterna = GerarHashChave(CHAVE_INTERNA);
 
-            // ──  I/l → Hex embaralhado → bytes
-            // Substituímos Convert.FromBase64String pelo nosso DecodificarHex
-            byte[] permutado = DecodificarHex(DecodificarIL(ilTexto), chaveHash);
+            // Decodifica as camadas externas (I/l e Hex)
+            byte[] mensagem = DecodificarHex(DecodificarIL(ilTexto), chaveInterna);
 
-            // Desfaz permutação 
-            byte[] cifrado = DesfazerPermutacao(permutado, chaveHash);
+            // Extrai apenas a senha cifrada 
+            byte[] senhaCifrada = new byte[32];
+            Array.Copy(mensagem, 0, senhaCifrada, 0, 32);
 
-            // ──  subtrai deslocamento com encadeamento
-            // Precisa percorrer na mesma ordem, usando o byte CIFRADO como 'anterior'
-            // não o descriptografado — o encadeamento usa sempre o lado cifrado
-            byte[] bytes = new byte[cifrado.Length];
-            int anterior = chaveHash[0]; // mesmo valor inicial usado na criptografia
+            // O restante é o bloco inteiro permutado, que inclui sal cifrado + texto cifrado
+            byte[] blocoPermutado = new byte[mensagem.Length - 32];
+            Array.Copy(mensagem, 32, blocoPermutado, 0, mensagem.Length - 32);
 
-            for (int i = 0; i < cifrado.Length; i++)
+            // Laço 1 — recupera a senhaAleatoria usando a chave interna
+            byte[] senhaAleatoria = new byte[32];
+            int anteriorSenha = chaveInterna[0];
+            for (int i = 0; i < 32; i++)
             {
-                int d = Deslocamento(i, chaveHash, anterior);
-                bytes[i] = (byte)(((cifrado[i] - d) % 256 + 256) % 256);
-                anterior = cifrado[i]; // usa o byte CIFRADO (não o descriptografado) — igual ao cifrar
+                int d = Deslocamento(i, chaveInterna, anteriorSenha);
+                senhaAleatoria[i] = (byte)(((senhaCifrada[i] - d) % 256 + 256) % 256);
+                anteriorSenha = senhaCifrada[i];
             }
 
-            // Remove sal e retorna o texto original (sem alteração)
+            // Desfaz a permutação do bloco inteiro,  sal + texto ainda cifrados
+            byte[] semPermutacao = DesfazerPermutacao(blocoPermutado, senhaAleatoria);
+
+            // Laço 2 — descriptografa o bloco com a senha aleatória recuperada
+            byte[] bytes = new byte[semPermutacao.Length];
+            int anterior = senhaAleatoria[0];
+            for (int i = 0; i < semPermutacao.Length; i++)
+            {
+                int d = Deslocamento(i, senhaAleatoria, anterior);
+                bytes[i] = (byte)(((semPermutacao[i] - d) % 256 + 256) % 256);
+                anterior = semPermutacao[i];
+            }
+
+            // Pula os 4 bytes de sal e retorna o texto original
             return Encoding.UTF8.GetString(bytes.Skip(4).ToArray());
         }
     }

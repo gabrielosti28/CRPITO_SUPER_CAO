@@ -11,7 +11,7 @@ namespace Cripto_GSD
 
         private static char[] GerarAlfabeto(byte[] chaveHash)
         {
-            char[] alfabeto = { 'ç', '4', '*', '~', 'r', 'w', 'v', 'c', '@', '¨', '&', '0',
+            char[] alfabeto = { 'ç', '4', '*', '~', 'r', 'w', '$', 'c', '@', 't', '&', '0',
             'O', 'q', 'X', '1' };
             for (int i = 15; i > 0; i--)
             {
